@@ -1,77 +1,96 @@
--- Clientes que han gastado más que la media general de clientes
+-- 1. Clientes que han gastado más que la media general de clientes
 
-select c.Nombre,sum(p2.Importe)
-from Cliente c 
+SELECT c.Nombre, sum(p2.Importe) as total_gastado
+FROM Cliente c 
+JOIN Pedido p 
+ON c.DNI_Cliente = p.Cliente_DNI_Cliente 
+JOIN Pago p2 
+ON p.idPedido = p2.Pedido_idPedido 
+GROUP BY c.Nombre
+HAVING sum(p2.Importe) > (
+SELECT avg(cliente_total)
+FROM (
+SELECT sum(p2.Importe) as cliente_total
+FROM Cliente c
+JOIN Pedido p 
+on c.DNI_Cliente = p.Cliente_DNI_Cliente 
+JOIN Pago p2 
+on p.idPedido = p2.Pedido_idPedido
+GROUP BY c.DNI_Cliente) as sub
+);
+
+
+
+
+
+
+
+
+
+
+
+
+select l.idLocal,l.Ciudad,sum(pdp.Cantidad) as total_vendidos
+from Local l
 join Pedido p 
-on c.DNI_Cliente =p.Cliente_DNI_Cliente 
-join Pago p2 
-on p.idPedido =p2.Pedido_idPedido 
-group by c.Nombre 
-having  sum(p2.Importe ) > 
-(select avg(total_cliente) 
-from(
-select sum(p2.Importe)as total_cliente
+on l.idLocal = p.Local_idLocal
+join Productos_del_pedido pdp 
+on p.idPedido = pdp.Pedido_idPedido
+join Producto pr 
+on pdp.Producto_idProducto = pr.idProducto
+where pr.Marca = 'Apple' and l.Ciudad = 'Madrid'
+group by l.idLocal
+order by total_vendidos desc
+limit 5;
+
+
+
+
+
+
+
+
+
+-- Clientes que han comprado más de 3 productos distintos y han gastado más de 250€
+
+
+select c.Nombre,count(distinct pdp.Producto_idProducto) as productos_distintos,
+sum(pg.Importe) as total_gastado
 from Cliente c
 join Pedido p 
-on c.DNI_Cliente =p.Cliente_DNI_Cliente 
-join Pago p2 
-on p.idPedido =p2.Pedido_idPedido
-group by c.Nombre )as sub);
-
-
--- El producto más vendido por cada local
-
-SELECT l.Ciudad ,p2.Descripcion,sum(pdp.cantidad) as cantidad_vendida  
-from Local l 
-join Pedido p 
-on l.idLocal =p.Local_idLocal 
+on c.DNI_Cliente = p.Cliente_DNI_Cliente
 join Productos_del_pedido pdp 
-on p.idPedido =pdp.Pedido_idPedido 
-join Producto p2 
-on pdp.Producto_idProducto =p2.idProducto 
-group by idLocal,p2.idProducto  
-order BY l.Ciudad, cantidad_vendida DESC;
-
-
--- "Mostrar por cada cliente el total gastado, el número de 
--- pedidos y el promedio gastado por pedido, pero solo si ha 
--- hecho al menos 2 pedidos."
-
-select c.Nombre,sum(p2.Importe )as total_gastado,COUNT(p.idPedido ) as total_pedidos, 
-avg(p2.Importe ) as promedio_por_pedido 
-from Cliente c 
-JOIN Pedido p 
-on c.DNI_Cliente =p.Cliente_DNI_Cliente 
-join Pago p2
-on p.idPedido =p2.Pedido_idPedido 
-group by c.Nombre 
-having count(p.idPedido) >= 2 ;
+on p.idPedido = pdp.Pedido_idPedido
+join Pago pg 
+on p.idPedido = pg.Pedido_idPedido
+group by c.DNI_Cliente
+having productos_distintos > 3 and total_gastado > 250;
 
 
 
 
 
--- Mostrar los empleados que han gestionado pedidos con un importe total 
--- superior al importe medio de todos los empleados
 
-select e.Nombre,sum(p2.Importe) as total_facturado,
-count(p.idPedido) as total_pedidos
-from Empleado e
+-- Mostrar los clientes nacidos después del 2000 que han comprado productos de todas las marcas 
+
+
+select c.Nombre,count(distinct pr.Marca) as marcas_compradas
+from Cliente c
 join Pedido p 
-on e.idEmpleado = p.Empleado_idEmpleado
-join Pago p2 
-on p.idPedido = p2.Pedido_idPedido
-group by e.idEmpleado
-having sum(p2.Importe) > (
-    select avg(sub.total_empleado)
-    from (
-        select sum(p4.Importe) as total_empleado
-        from Empleado e2
-        join Pedido p3 
-        on e2.idEmpleado = p3.Empleado_idEmpleado
-        join Pago p4 
-        on p3.idPedido = p4.Pedido_idPedido
-        group by e2.idEmpleado)as sub);
+on c.DNI_Cliente = p.Cliente_DNI_Cliente
+join Productos_del_pedido pdp 
+on p.idPedido = pdp.Pedido_idPedido
+join Producto pr 
+on pdp.Producto_idProducto = pr.idProducto
+where c.Fecha_nacimiento > '2000-01-01'
+group by c.DNI_Cliente
+having marcas_compradas = 5;
+
+
+
+
+
+
 
 
 
@@ -120,25 +139,44 @@ having total_pedidos >= 3
 AND total_gastado > 500;
 
 
--- Productos vendidos con su total de ingresos generados y el 
--- total de pedidos distintos en los que ha estado
 
-create view vista_productos_ingresos as
-SELECT p.idProducto,sum(pdp.Cantidad)as total_productos_vendidos,
-sum(p.idProducto*pdp.Cantidad)as total_facturado,
-count(DISTINCT pdp.Pedido_idPedido)as productos_en_pedidos_dif
-from Producto p 
-join Productos_del_pedido pdp 
-on p.idProducto =pdp.Producto_idProducto 
-group by p.idProducto;
+
+
+
+
+
+-- Vista que muestra, por cada empleado, su nombre completo, la ciudad donde trabaja,
+-- la cantidad de pedidos que ha gestionado, el importe total facturado en esos pedidos,
+-- y el importe promedio facturado por pedido.
+
+create view vista_empleados_rendimiento as
+select e.idEmpleado,concat(e.Nombre, ' ', e.Apellidos) as nombre_completo,
+l.Ciudad,count(distinct p.idPedido) as pedidos_gestionados,
+sum(pg.Importe) as total_facturado,
+avg(pg.Importe) as promedio_por_pedido
+from Empleado e
+join Local l 
+on e.Local_idLocal = l.idLocal
+join Pedido p 
+on e.idEmpleado = p.Empleado_idEmpleado
+join Pago pg 
+on p.idPedido = pg.Pedido_idPedido
+group by e.idEmpleado;
+
+
+
+
+
+
+
 
 
 
 
 
 -- Crear una función que reciba el DNI de un cliente y devuelva 
--- cuántos productos diferentes ha comprado en total 
--- (aunque haya hecho varios pedidos).
+-- cuántos productos diferentes ha comprado en total, y devolver -1 si 
+-- el cliente no existe
 
 DELIMITER $$
 CREATE FUNCTION contar_productos_diferentes_cliente(dni_Cliente VARCHAR(45))
@@ -146,53 +184,65 @@ RETURNS INT
 DETERMINISTIC
 BEGIN
    DECLARE salida INT DEFAULT 0;
-select count(DISTINCT p2.idProducto ) into salida
-from Cliente c 
-join Pedido p 
-on c.DNI_Cliente =p.Cliente_DNI_Cliente
-join Productos_del_pedido pdp 
-on p.idPedido =pdp.Pedido_idPedido 
-join Producto p2 
-on pdp.Producto_idProducto =p2.idProducto 
-where c.DNI_Cliente =dni_Cliente;
 
-return salida;
+   if not exists (select 1 from Cliente where DNI_Cliente = dni_Cliente) then
+      return -1;
+   end if;
 
+   select count(distinct p2.idProducto) into salida
+   from Cliente c 
+   join Pedido p on c.DNI_Cliente = p.Cliente_DNI_Cliente
+   join Productos_del_pedido pdp on p.idPedido = pdp.Pedido_idPedido 
+   join Producto p2 on pdp.Producto_idProducto = p2.idProducto 
+   where c.DNI_Cliente = dni_Cliente;
+
+   return salida;
 END $$
 DELIMITER ;
+
 
 select contar_productos_diferentes_cliente('01859420I');
 
 
 
--- función que reciba el DNI de un cliente y devuelva el porcentaje de 
--- pedidos que ha realizado respecto al total de pedidos en el sistema.
 
 
+
+
+
+
+
+
+-- Función que reciba el DNI de un cliente y devuelva el porcentaje de 
+-- pedidos que ha realizado respecto al total de pedidos en el sistema, 
+-- y devolver -1 si el cliente no existe
 
 DELIMITER $$
 CREATE FUNCTION porcentaje_pedidos_cliente(dni_Cliente VARCHAR(45))
 RETURNS DECIMAL(5,2)
 DETERMINISTIC
 BEGIN
-	
    DECLARE pedidos_clientes INT DEFAULT 0;
-   DECLARE pedidos_totales int default 0;
+   DECLARE pedidos_totales INT DEFAULT 0;
    DECLARE porcentaje DECIMAL(7,2) DEFAULT 0;
 
-SELECT count(*) into pedidos_clientes
-FROM Cliente c 
-join Pedido p 
-on c.DNI_Cliente =p.Cliente_DNI_Cliente
-WHERE c.DNI_Cliente = dni_Cliente;
+   if not exists (select 1 from Cliente where DNI_Cliente = dni_Cliente) then
+      return -1;
+   end if;
 
-select count(*) into pedidos_totales
-from Pedido p ;
+   select count(*) into pedidos_clientes
+   from Pedido
+   where Cliente_DNI_Cliente = dni_Cliente;
 
-SET porcentaje = (pedidos_clientes * 100.0) / pedidos_totales;
+   select count(*) into pedidos_totales
+   from Pedido;
 
-return porcentaje;
+   if pedidos_totales = 0 then
+      return null;
+   end if;
+   set porcentaje = (pedidos_clientes * 100.0) / pedidos_totales;
 
+   return porcentaje;
 END $$
 DELIMITER ;
 
@@ -203,8 +253,14 @@ select porcentaje_pedidos_cliente('27009521H');
 
 
 
--- procedimiento que muestre los 5 productos con más unidades vendidas 
--- en el último mes
+
+
+
+
+-- Procedimiento que muestra los 5 productos con más unidades vendidas 
+-- entre dos fechas dadas como parámetros (fecha_inicio y fecha_fin),
+-- ordenados por cantidad total vendida en ese periodo.
+
 
 DELIMITER $$
 
@@ -285,6 +341,8 @@ call pedidos_por_empleado('E0009');
 
 
 
+
+
 -- Trigger para actualizar stock al original si se cancela un pedido
 
 DELIMITER $$
@@ -294,18 +352,40 @@ after delete on Productos_del_pedido
 for each row
 begin
   update Producto
-  set stock = stock + OLD.Cantidad
-  where idProducto = OLD.Producto_idProducto;
+  set stock = stock + old.Cantidad
+  where idProducto = old.Producto_idProducto;
 end $$
 
 DELIMITER ;
 
-select idProducto, stock from Producto where idProducto = 1;
+select idProducto, stock 
+from Producto 
+where idProducto = 1;
 
 delete from Productos_del_pedido 
 where Pedido_idPedido = 10 and Producto_idProducto = 1;
 
-select idProducto, stock from Producto where idProducto = 1;
+
+select idProducto, stock 
+from Producto 
+where idProducto = 1;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 -- Trigger para impedir que se inserte un pago con importe negativo o mayor al total del pedido
 
@@ -338,6 +418,5 @@ end $$
 
 DELIMITER ;
 
-insert into Pago (idPago, Pedido_idPedido, Fecha_Pago, Importe)
-values (1002, 10, curdate(), 100.00);
-
+insert into Pago (idPago, Fecha_Pago, Metodo_pago, Importe, Pedido_idPedido)
+values (1005, curdate(), 'Tarjeta', 1800.00, 10);
